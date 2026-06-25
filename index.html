@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Desk — 便利機能ダッシュボード</title>
+<meta name="description" content="メモ、タイマー、電卓、天気をひとつにまとめたChromeOS向けPWA">
+<meta name="theme-color" content="#23262b">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ===== サイドの引き出し型ナビ ===== -->
+  <nav class="drawer-nav" aria-label="機能切り替え">
+    <div class="brand">
+      <span class="brand-mark">D.</span>
+      <span class="brand-name">Desk</span>
+    </div>
+
+    <button class="drawer-tab is-active" data-target="notes" aria-current="true">
+      <span class="tab-index">01</span>
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 4h12l4 4v12H4V4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M16 4v4h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 11h8M8 14.5h8M8 18h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </span>
+      <span class="tab-label">メモ / ToDo</span>
+    </button>
+
+    <button class="drawer-tab" data-target="timer">
+      <span class="tab-index">02</span>
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="1.6"/><path d="M12 9v4l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 2.5h5M12 4.5V2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </span>
+      <span class="tab-label">タイマー</span>
+    </button>
+
+    <button class="drawer-tab" data-target="calc">
+      <span class="tab-index">03</span>
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M8 7.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8.3" cy="12" r="0.9" fill="currentColor"/><circle cx="12" cy="12" r="0.9" fill="currentColor"/><circle cx="15.7" cy="12" r="0.9" fill="currentColor"/><circle cx="8.3" cy="15.6" r="0.9" fill="currentColor"/><circle cx="12" cy="15.6" r="0.9" fill="currentColor"/><circle cx="15.7" cy="15.6" r="0.9" fill="currentColor"/></svg>
+      </span>
+      <span class="tab-label">電卓 / 変換</span>
+    </button>
+
+    <button class="drawer-tab" data-target="weather">
+      <span class="tab-index">04</span>
+      <span class="tab-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="9.5" cy="9" r="3.4" stroke="currentColor" stroke-width="1.6"/><path d="M7 16.5h10.5a3 3 0 0 0 0-6 4.4 4.4 0 0 0-8.4-1.3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="tab-label">天気 / 情報</span>
+    </button>
+
+    <div class="drawer-foot">
+      <button class="install-btn" id="installBtn" hidden>
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 4v11m0 0 4-4m-4 4-4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        インストール
+      </button>
+      <span class="clock" id="clock">--:--</span>
+    </div>
+  </nav>
+
+  <!-- ===== メイン領域 ===== -->
+  <main class="panels">
+
+    <!-- --- 01 メモ / ToDo --- -->
+    <section class="panel is-active" id="panel-notes" aria-labelledby="h-notes">
+      <header class="panel-head">
+        <p class="eyebrow">01 · Notes</p>
+        <h1 id="h-notes">メモ / ToDo</h1>
+        <p class="panel-sub">思いついたことを書いて、終わったらチェック。自動で下書き保存されます。</p>
+      </header>
+
+      <form class="todo-add" id="todoForm">
+        <input type="text" id="todoInput" placeholder="やること、メモしたいことを入力" autocomplete="off">
+        <button type="submit" aria-label="追加">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </form>
+
+      <ul class="todo-list" id="todoList"></ul>
+
+      <p class="empty-state" id="todoEmpty">まだ何もありません。上の欄から最初の1件を追加してください。</p>
+
+      <footer class="todo-footer">
+        <span id="todoCount">0 件のタスク</span>
+        <button class="ghost-btn" id="clearDone">完了済みを削除</button>
+      </footer>
+    </section>
+
+    <!-- --- 02 タイマー / ポモドーロ --- -->
+    <section class="panel" id="panel-timer" aria-labelledby="h-timer">
+      <header class="panel-head">
+        <p class="eyebrow">02 · Focus</p>
+        <h1 id="h-timer">タイマー</h1>
+        <p class="panel-sub">25分集中 → 5分休憩のポモドーロ、または好きな時間で単発タイマー。</p>
+      </header>
+
+      <div class="timer-modes" role="tablist">
+        <button class="mode-btn is-active" data-mode="pomodoro" role="tab" aria-selected="true">ポモドーロ</button>
+        <button class="mode-btn" data-mode="custom" role="tab" aria-selected="false">カスタム</button>
+      </div>
+
+      <div class="timer-stage">
+        <svg class="timer-ring" viewBox="0 0 220 220" width="220" height="220">
+          <circle cx="110" cy="110" r="98" class="ring-track"/>
+          <circle cx="110" cy="110" r="98" class="ring-progress" id="ringProgress"/>
+        </svg>
+        <div class="timer-readout">
+          <span class="timer-time" id="timerTime">25:00</span>
+          <span class="timer-phase" id="timerPhase">集中タイム</span>
+        </div>
+      </div>
+
+      <div class="custom-time-row" id="customTimeRow" hidden>
+        <label>分数を設定: <input type="number" id="customMinutes" min="1" max="180" value="10"></label>
+      </div>
+
+      <div class="timer-controls">
+        <button class="ghost-btn" id="timerReset">リセット</button>
+        <button class="primary-btn" id="timerToggle">開始</button>
+        <button class="ghost-btn" id="timerSkip">スキップ</button>
+      </div>
+
+      <p class="timer-cycles">完了したポモドーロ: <span id="pomodoroCount">0</span> 回</p>
+    </section>
+
+    <!-- --- 03 電卓 / 単位変換 --- -->
+    <section class="panel" id="panel-calc" aria-labelledby="h-calc">
+      <header class="panel-head">
+        <p class="eyebrow">03 · Numbers</p>
+        <h1 id="h-calc">電卓 / 単位変換</h1>
+        <p class="panel-sub">日常の計算と、長さ・重さ・温度などの単位変換をまとめて。</p>
+      </header>
+
+      <div class="calc-modes" role="tablist">
+        <button class="mode-btn is-active" data-mode="basic" role="tab" aria-selected="true">電卓</button>
+        <button class="mode-btn" data-mode="convert" role="tab" aria-selected="false">単位変換</button>
+      </div>
+
+      <div class="calc-view" id="calcBasic">
+        <div class="calc-display">
+          <span class="calc-expr" id="calcExpr">&nbsp;</span>
+          <span class="calc-result" id="calcResult">0</span>
+        </div>
+        <div class="calc-keys" id="calcKeys"></div>
+      </div>
+
+      <div class="calc-view" id="calcConvert" hidden>
+        <div class="convert-row">
+          <label>種類
+            <select id="convCategory"></select>
+          </label>
+        </div>
+        <div class="convert-row convert-row--fields">
+          <div class="convert-field">
+            <input type="number" id="convFromValue" value="1">
+            <select id="convFromUnit"></select>
+          </div>
+          <button class="swap-btn" id="convSwap" aria-label="入れ替え">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M7 7h13l-4-4M17 17H4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="convert-field">
+            <input type="text" id="convToValue" readonly>
+            <select id="convToUnit"></select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- --- 04 天気 / 情報 --- -->
+    <section class="panel" id="panel-weather" aria-labelledby="h-weather">
+      <header class="panel-head">
+        <p class="eyebrow">04 · Outside</p>
+        <h1 id="h-weather">天気 / 情報</h1>
+        <p class="panel-sub">現在地、または指定した街の天気をひとめで。</p>
+      </header>
+
+      <form class="weather-search" id="weatherForm">
+        <input type="text" id="weatherCity" placeholder="都市名で検索（例: Tokyo, Osaka, Naha）" autocomplete="off">
+        <button type="submit">検索</button>
+        <button type="button" class="ghost-btn" id="weatherGeo">現在地を使う</button>
+      </form>
+
+      <div class="weather-card" id="weatherCard">
+        <p class="empty-state">都市名を検索するか、現在地ボタンを押してください。</p>
+      </div>
+
+      <p class="weather-credit">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></p>
+    </section>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

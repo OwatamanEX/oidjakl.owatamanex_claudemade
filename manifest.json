@@ -1,0 +1,25 @@
+{
+  "name": "Desk — 便利機能ダッシュボード",
+  "short_name": "Desk",
+  "description": "メモ、タイマー、電卓、天気をひとつにまとめたダッシュボード",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#1B1D21",
+  "theme_color": "#23262B",
+  "lang": "ja",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "メモ / ToDo", "url": "./index.html?tab=notes" },
+    { "name": "タイマー", "url": "./index.html?tab=timer" },
+    { "name": "電卓", "url": "./index.html?tab=calc" },
+    { "name": "天気", "url": "./index.html?tab=weather" }
+  ]
+}
