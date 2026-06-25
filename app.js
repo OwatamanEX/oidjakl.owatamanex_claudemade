@@ -267,7 +267,7 @@ function notifyDeskUser(){
     const label = timerMode === 'pomodoro'
       ? (phase === 'focus' ? '集中タイムが終わりました。休憩しましょう。' : '休憩が終わりました。再開しましょう。')
       : 'タイマーが終了しました。';
-    new Notification('Desk タイマー', { body: label, icon: 'icons/icon-192.png' });
+    new Notification('Desk タイマー', { body: label, icon: 'icon-192.png' });
   } else if (navigator.vibrate) {
     navigator.vibrate(200);
   }
