@@ -657,3 +657,412 @@ weatherGeoBtn.addEventListener('click', () => {
     () => setWeatherError('現在地を取得できませんでした。都市名で検索してください。')
   );
 });
+
+/* =========================================================
+   02. Markdownエディタ
+   ========================================================= */
+const MD_KEY = 'desk.markdown.v1';
+const mdInput = document.getElementById('mdInput');
+const mdPreview = document.getElementById('mdPreview');
+const mdCopyBtn = document.getElementById('mdCopyBtn');
+const mdClearBtn = document.getElementById('mdClearBtn');
+
+// marked の設定（XSS対策でsanitize）
+function renderMd(text) {
+  if (typeof marked === 'undefined') {
+    mdPreview.textContent = text;
+    return;
+  }
+  // DOMPurify がない環境向けにシンプルな変換のみ許可
+  mdPreview.innerHTML = marked.parse(text, { mangle: false, headerIds: false });
+}
+
+mdInput.value = localStorage.getItem(MD_KEY) || '';
+renderMd(mdInput.value);
+
+mdInput.addEventListener('input', () => {
+  renderMd(mdInput.value);
+  localStorage.setItem(MD_KEY, mdInput.value);
+});
+
+// ツールバーボタン：選択範囲にマークダウン記法を挿入
+document.querySelectorAll('.md-tool').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const mark = btn.dataset.md;
+    const start = mdInput.selectionStart;
+    const end = mdInput.selectionEnd;
+    const selected = mdInput.value.slice(start, end);
+    const replacement = mark.includes('**') ? `**${selected || '太字'}**`
+      : mark.includes('*') ? `*${selected || '斜体'}*`
+      : mark.includes('`') ? `\`${selected || 'コード'}\``
+      : mark + (selected || '');
+    mdInput.setRangeText(replacement, start, end, 'end');
+    mdInput.dispatchEvent(new Event('input'));
+    mdInput.focus();
+  });
+});
+
+mdCopyBtn.addEventListener('click', async () => {
+  const html = mdPreview.innerHTML;
+  try {
+    await navigator.clipboard.writeText(html);
+    mdCopyBtn.textContent = 'コピーしました！';
+    setTimeout(() => (mdCopyBtn.textContent = 'HTMLをコピー'), 1800);
+  } catch {
+    mdCopyBtn.textContent = 'コピー失敗';
+    setTimeout(() => (mdCopyBtn.textContent = 'HTMLをコピー'), 1800);
+  }
+});
+
+mdClearBtn.addEventListener('click', () => {
+  if (!mdInput.value || confirm('内容をクリアしますか？')) {
+    mdInput.value = '';
+    mdPreview.innerHTML = '';
+    localStorage.removeItem(MD_KEY);
+  }
+});
+
+/* =========================================================
+   03. クリップボード履歴
+   ========================================================= */
+const CLIP_KEY = 'desk.clipboard.v1';
+const clipList = document.getElementById('clipList');
+const clipEmpty = document.getElementById('clipEmpty');
+const clipSaveBtn = document.getElementById('clipSaveBtn');
+const clipClearBtn = document.getElementById('clipClearBtn');
+
+let clips = [];
+try { clips = JSON.parse(localStorage.getItem(CLIP_KEY)) || []; } catch { clips = []; }
+
+function saveClips() { localStorage.setItem(CLIP_KEY, JSON.stringify(clips)); }
+
+function renderClips() {
+  clipList.innerHTML = '';
+  clipEmpty.style.display = clips.length === 0 ? 'block' : 'none';
+  clips.forEach((clip, i) => {
+    const li = document.createElement('li');
+    li.className = 'clip-item';
+
+    const textDiv = document.createElement('div');
+    const textEl = document.createElement('div');
+    textEl.className = 'clip-text';
+    textEl.textContent = clip.text;
+    const timeEl = document.createElement('div');
+    timeEl.className = 'clip-time';
+    timeEl.textContent = new Date(clip.ts).toLocaleString('ja-JP', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    textDiv.appendChild(textEl);
+    textDiv.appendChild(timeEl);
+    textDiv.style.flex = '1';
+
+    const actions = document.createElement('div');
+    actions.className = 'clip-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'clip-btn';
+    copyBtn.textContent = 'コピー';
+    copyBtn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(clip.text).catch(() => {});
+      copyBtn.textContent = '✓';
+      setTimeout(() => (copyBtn.textContent = 'コピー'), 1500);
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'clip-btn';
+    delBtn.textContent = '削除';
+    delBtn.addEventListener('click', () => {
+      clips.splice(i, 1);
+      saveClips();
+      renderClips();
+    });
+
+    actions.append(copyBtn, delBtn);
+    li.append(textDiv, actions);
+    clipList.appendChild(li);
+  });
+}
+
+clipSaveBtn.addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text.trim()) { alert('クリップボードが空です。'); return; }
+    if (clips.length > 0 && clips[0].text === text) {
+      alert('直前と同じ内容です。'); return;
+    }
+    clips.unshift({ text, ts: Date.now() });
+    if (clips.length > 30) clips.pop();
+    saveClips();
+    renderClips();
+  } catch {
+    alert('クリップボードへのアクセスが許可されていません。\nアドレスバー左の鍵アイコンから許可してください。');
+  }
+});
+
+clipClearBtn.addEventListener('click', () => {
+  if (clips.length === 0 || confirm('全て削除しますか？')) {
+    clips = [];
+    saveClips();
+    renderClips();
+  }
+});
+
+renderClips();
+
+/* =========================================================
+   07. QRコード生成
+   ========================================================= */
+const qrInput = document.getElementById('qrInput');
+const qrGenBtn = document.getElementById('qrGenBtn');
+const qrResult = document.getElementById('qrResult');
+let qrInstance = null;
+
+function generateQR() {
+  const text = qrInput.value.trim();
+  if (!text) { qrResult.innerHTML = '<p class="empty-state">テキストまたはURLを入力してください。</p>'; return; }
+
+  qrResult.innerHTML = '';
+  const canvas = document.createElement('div');
+  canvas.id = 'qrCanvas';
+  qrResult.appendChild(canvas);
+
+  try {
+    qrInstance = new QRCode(canvas, {
+      text,
+      width: 240,
+      height: 240,
+      colorDark: '#1B1D21',
+      colorLight: '#FFFFFF',
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+  } catch {
+    qrResult.innerHTML = '<p class="empty-state">QRコードの生成に失敗しました。</p>';
+    return;
+  }
+
+  // ダウンロードボタン
+  setTimeout(() => {
+    const img = qrResult.querySelector('img') || qrResult.querySelector('canvas');
+    if (!img) return;
+    const dlBtn = document.createElement('button');
+    dlBtn.className = 'qr-dl-btn';
+    dlBtn.textContent = '画像をダウンロード';
+    dlBtn.addEventListener('click', () => {
+      const src = img.tagName === 'CANVAS' ? img.toDataURL() : img.src;
+      const a = document.createElement('a');
+      a.href = src;
+      a.download = 'qrcode.png';
+      a.click();
+    });
+    qrResult.appendChild(dlBtn);
+  }, 200);
+}
+
+qrGenBtn.addEventListener('click', generateQR);
+qrInput.addEventListener('keydown', e => { if (e.key === 'Enter') generateQR(); });
+
+/* =========================================================
+   08. カラーピッカー
+   ========================================================= */
+const COLOR_HIST_KEY = 'desk.colorhist.v1';
+const colorPicker = document.getElementById('colorPicker');
+const colorPreview = document.getElementById('colorPreview');
+const colorValuesEl = document.getElementById('colorValues');
+const colorHistoryEl = document.getElementById('colorHistory');
+
+let colorHistory = [];
+try { colorHistory = JSON.parse(localStorage.getItem(COLOR_HIST_KEY)) || []; } catch { colorHistory = []; }
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return { r, g, b };
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h, s, l = (max+min)/2;
+  if (max === min) { h = s = 0; }
+  else {
+    const d = max - min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch(max) {
+      case r: h = ((g-b)/d + (g<b?6:0))/6; break;
+      case g: h = ((b-r)/d + 2)/6; break;
+      default: h = ((r-g)/d + 4)/6;
+    }
+  }
+  return { h: Math.round(h*360), s: Math.round(s*100), l: Math.round(l*100) };
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => (btn.textContent = orig), 1500);
+  } catch {}
+}
+
+function renderColorValues(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const { h, s, l } = rgbToHsl(r, g, b);
+  const formats = [
+    { label: 'HEX', value: hex.toUpperCase() },
+    { label: 'RGB', value: `rgb(${r}, ${g}, ${b})` },
+    { label: 'HSL', value: `hsl(${h}, ${s}%, ${l}%)` },
+  ];
+  colorValuesEl.innerHTML = '';
+  formats.forEach(({ label, value }) => {
+    const row = document.createElement('div');
+    row.className = 'color-val-row';
+    const lbl = document.createElement('span'); lbl.className = 'color-val-label'; lbl.textContent = label;
+    const val = document.createElement('span'); val.className = 'color-val-text'; val.textContent = value;
+    const btn = document.createElement('button'); btn.className = 'color-copy-btn'; btn.textContent = 'コピー';
+    btn.addEventListener('click', () => copyText(value, btn));
+    row.append(lbl, val, btn);
+    colorValuesEl.appendChild(row);
+  });
+}
+
+function renderColorHistory() {
+  colorHistoryEl.innerHTML = '';
+  colorHistory.forEach(hex => {
+    const swatch = document.createElement('button');
+    swatch.className = 'color-swatch';
+    swatch.style.background = hex;
+    swatch.title = hex;
+    swatch.addEventListener('click', () => {
+      colorPicker.value = hex;
+      updateColor(hex);
+    });
+    colorHistoryEl.appendChild(swatch);
+  });
+}
+
+function updateColor(hex) {
+  colorPreview.style.background = hex;
+  renderColorValues(hex);
+  if (!colorHistory.includes(hex)) {
+    colorHistory.unshift(hex);
+    if (colorHistory.length > 16) colorHistory.pop();
+    localStorage.setItem(COLOR_HIST_KEY, JSON.stringify(colorHistory));
+    renderColorHistory();
+  }
+}
+
+colorPicker.addEventListener('input', () => updateColor(colorPicker.value));
+colorPicker.addEventListener('change', () => updateColor(colorPicker.value));
+
+// 初期表示
+updateColor(colorPicker.value);
+renderColorHistory();
+
+/* =========================================================
+   09. パスワード生成
+   ========================================================= */
+const PW_HIST_KEY = 'desk.pwhist.v1';
+const pwLengthInput = document.getElementById('pwLength');
+const pwLenDisplay = document.getElementById('pwLenDisplay');
+const pwUpperCb = document.getElementById('pwUpper');
+const pwLowerCb = document.getElementById('pwLower');
+const pwDigitCb = document.getElementById('pwDigit');
+const pwSymbolCb = document.getElementById('pwSymbol');
+const pwResult = document.getElementById('pwResult');
+const pwCopyBtn = document.getElementById('pwCopyBtn');
+const pwGenBtn = document.getElementById('pwGenBtn');
+const pwStrengthEl = document.getElementById('pwStrength');
+const pwHistoryEl = document.getElementById('pwHistory');
+
+let pwHistoryList = [];
+try { pwHistoryList = JSON.parse(localStorage.getItem(PW_HIST_KEY)) || []; } catch { pwHistoryList = []; }
+
+const CHARS = {
+  upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  lower: 'abcdefghijklmnopqrstuvwxyz',
+  digit: '0123456789',
+  symbol: '!@#$%^&*()-_=+[]{}|;:,.<>?',
+};
+
+function calcStrength(pw) {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (pw.length >= 16) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  return score; // 0-7
+}
+
+function renderStrength(pw) {
+  const score = calcStrength(pw);
+  const pct = Math.round((score / 7) * 100);
+  const color = score <= 2 ? '#C96B6B' : score <= 4 ? '#C9A86B' : '#6E9B85';
+  const label = score <= 2 ? '弱い' : score <= 4 ? '普通' : '強い';
+  pwStrengthEl.innerHTML = `<div class="pw-strength-bar" style="width:${pct}%;background:${color}"></div>`;
+  pwStrengthEl.title = `強度: ${label}`;
+}
+
+function generatePassword() {
+  let pool = '';
+  const required = [];
+  if (pwUpperCb.checked) { pool += CHARS.upper; required.push(CHARS.upper[Math.floor(Math.random()*CHARS.upper.length)]); }
+  if (pwLowerCb.checked) { pool += CHARS.lower; required.push(CHARS.lower[Math.floor(Math.random()*CHARS.lower.length)]); }
+  if (pwDigitCb.checked) { pool += CHARS.digit; required.push(CHARS.digit[Math.floor(Math.random()*CHARS.digit.length)]); }
+  if (pwSymbolCb.checked) { pool += CHARS.symbol; required.push(CHARS.symbol[Math.floor(Math.random()*CHARS.symbol.length)]); }
+
+  if (!pool) { alert('少なくとも1つの文字種を選択してください。'); return; }
+
+  const len = parseInt(pwLengthInput.value, 10);
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  const chars = Array.from(arr, v => pool[v % pool.length]);
+  // 各文字種から最低1文字確保（先頭に強制挿入してシャッフル）
+  required.forEach((c, i) => { chars[i] = c; });
+  // Fisher-Yates シャッフル（crypto乱数使用）
+  const shuffle = new Uint32Array(len);
+  crypto.getRandomValues(shuffle);
+  for (let i = len - 1; i > 0; i--) {
+    const j = shuffle[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  const pw = chars.join('');
+  pwResult.textContent = pw;
+  renderStrength(pw);
+
+  // 履歴に追加
+  pwHistoryList.unshift(pw);
+  if (pwHistoryList.length > 10) pwHistoryList.pop();
+  localStorage.setItem(PW_HIST_KEY, JSON.stringify(pwHistoryList));
+  renderPwHistory();
+}
+
+function renderPwHistory() {
+  pwHistoryEl.innerHTML = '';
+  pwHistoryList.forEach(pw => {
+    const li = document.createElement('li');
+    li.className = 'pw-hist-item';
+    li.textContent = pw;
+    const btn = document.createElement('button');
+    btn.textContent = 'コピー';
+    btn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(pw).catch(() => {});
+      btn.textContent = '✓';
+      setTimeout(() => (btn.textContent = 'コピー'), 1500);
+    });
+    li.appendChild(btn);
+    pwHistoryEl.appendChild(li);
+  });
+}
+
+pwLengthInput.addEventListener('input', () => { pwLenDisplay.textContent = pwLengthInput.value; });
+pwGenBtn.addEventListener('click', generatePassword);
+pwCopyBtn.addEventListener('click', async () => {
+  const pw = pwResult.textContent;
+  if (pw === '—') return;
+  await navigator.clipboard.writeText(pw).catch(() => {});
+  pwCopyBtn.title = 'コピーしました！';
+  setTimeout(() => (pwCopyBtn.title = 'コピー'), 1500);
+});
+
+renderPwHistory();
